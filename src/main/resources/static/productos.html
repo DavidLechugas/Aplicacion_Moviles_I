@@ -1,0 +1,104 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Registrar producto · Buñuelos Yanelys</title>
+  <style>
+    * { box-sizing: border-box; }
+    body { margin: 0; background: #faf2e6; color: #382819; font: 16px system-ui, sans-serif; }
+    main { max-width: 720px; margin: 40px auto; padding: 24px; }
+    h1 { margin-bottom: 8px; }
+    form, section { background: white; border: 1px solid #e4d4bf; border-radius: 16px; padding: 24px; margin-top: 24px; }
+    label { display: block; margin-bottom: 18px; font-weight: 600; }
+    input, textarea { display: block; width: 100%; margin-top: 7px; border: 1px solid #a9937e; border-radius: 7px; padding: 11px; font: inherit; }
+    input[type=checkbox] { display: inline; width: auto; margin-right: 8px; }
+    button { background: #924711; color: white; border: 0; padding: 13px 20px; border-radius: 8px; font: inherit; cursor: pointer; }
+    button:disabled { opacity: .6; cursor: wait; }
+    :focus-visible { outline: 3px solid #187790; outline-offset: 3px; }
+    small { display: block; margin-top: 6px; font-weight: normal; color: #63584d; }
+    pre { white-space: pre-wrap; overflow-wrap: anywhere; background: #f6f4f0; padding: 16px; border-radius: 8px; }
+    #estado { font-weight: 600; }
+    .error { color: #a32020; }
+    .ok { color: #236238; }
+    [hidden] { display: none; }
+    @media(max-width: 540px) { main { margin: 12px auto; padding: 12px; } form, section { padding: 18px; } }
+  </style>
+</head>
+<body>
+<main>
+  <p>Buñuelos Yanelys · Prueba de registro</p>
+  <h1>Registrar producto</h1>
+  <p>Completa los datos y pulsa Guardar. Debajo verás la respuesta del servidor.</p>
+  <form id="formulario">
+    <label>Código <input name="codigo" required maxlength="60" placeholder="Ejemplo: A002"><small>Usa un código nuevo. La generación automática está pendiente.</small></label>
+    <label>Nombre <input name="nombre" required maxlength="120" placeholder="Buñuelo tradicional"></label>
+    <label>Descripción <textarea name="descripcion" rows="3" maxlength="500"></textarea></label>
+    <label>Categoría <input name="categoria" maxlength="80" placeholder="Buñuelos"></label>
+    <label>Precio <input name="precio" type="number" min="0.01" step="0.01" required placeholder="2000"></label>
+    <label>URL de imagen (opcional) <input name="imagenUrl" type="url" placeholder="https://..."></label>
+    <label><input name="activo" type="checkbox" checked>Producto activo</label>
+    <button id="guardar" type="submit">Guardar producto</button>
+  </form>
+  <section aria-label="Resultado del registro">
+    <p id="estado" role="status" aria-live="polite">Todavía no se ha enviado ningún producto.</p>
+    <div id="evidencia" hidden>
+      <p id="verificacion"></p>
+      <h2>Datos enviados</h2><pre id="enviado"></pre>
+      <h2>Respuesta de la API</h2><pre id="respuesta"></pre>
+      <p>En Compass, actualiza <strong>bunuelos_yanelys → productos</strong> para ver el documento.</p>
+    </div>
+  </section>
+</main>
+<script>
+  const formulario = document.querySelector('#formulario');
+  const boton = document.querySelector('#guardar');
+  const estado = document.querySelector('#estado');
+  async function consultar() {
+    const respuesta = await fetch('/api/productos');
+    if (!respuesta.ok) throw new Error('No se pudo consultar la API. Comprueba que Spring y MongoDB estén disponibles.');
+    return respuesta.json();
+  }
+  formulario.addEventListener('submit', async (evento) => {
+    evento.preventDefault();
+    const datos = new FormData(formulario);
+    const codigo = datos.get('codigo').trim();
+    const nombre = datos.get('nombre').trim();
+    if (!codigo || !nombre) { estado.textContent = 'El código y el nombre no pueden estar vacíos.'; estado.className = 'error'; return; }
+    boton.disabled = true;
+    estado.className = '';
+    estado.textContent = 'Enviando producto…';
+    document.querySelector('#evidencia').hidden = true;
+    try {
+      const existentes = await consultar();
+      if (existentes.some(producto => producto.codigo === codigo)) throw new Error('Ese código ya existe. Escribe otro para evitar reemplazar el producto.');
+      const producto = {
+        codigo, nombre,
+        descripcion: datos.get('descripcion').trim(),
+        categoria: datos.get('categoria').trim(),
+        imagenUrl: datos.get('imagenUrl').trim(),
+        activo: datos.has('activo'),
+        precio: Number(datos.get('precio')),
+        creadoEn: new Date().toISOString()
+      };
+      const cuerpo = { ...producto, product_name: producto.nombre, description: producto.descripcion, category: producto.categoria, image_Url: producto.imagenUrl, state: producto.activo };
+      const respuesta = await fetch('/api/productos', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(cuerpo) });
+      if (!respuesta.ok) throw new Error('El servidor rechazó el registro (HTTP ' + respuesta.status + ').');
+      const guardado = await respuesta.json();
+      document.querySelector('#enviado').textContent = JSON.stringify(cuerpo, null, 2);
+      document.querySelector('#respuesta').textContent = JSON.stringify(guardado, null, 2);
+      document.querySelector('#evidencia').hidden = false;
+      estado.textContent = 'Producto guardado: ' + guardado.codigo;
+      estado.className = 'ok';
+      try {
+        const productos = await consultar();
+        document.querySelector('#verificacion').textContent = productos.some(p => p.codigo === codigo) ? 'Verificado: el producto también aparece al consultar la API.' : 'El servidor aceptó el registro, pero no apareció en la consulta posterior.';
+      } catch { document.querySelector('#verificacion').textContent = 'El servidor aceptó el registro; no se pudo completar la consulta de verificación.'; }
+    } catch (error) {
+      estado.textContent = error instanceof TypeError ? 'No se pudo completar la comunicación. Consulta la lista de productos antes de volver a enviar.' : error.message;
+      estado.className = 'error';
+    } finally { boton.disabled = false; }
+  });
+</script>
+</body>
+</html>
