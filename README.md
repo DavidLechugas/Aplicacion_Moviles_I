@@ -1,2 +1,2 @@
-# Distros-Linux-2026-2
-la exposicion de servidores sobre las distribuciones de linux
+# Buñuelos Yanelis - Moviles I
+Estructura para buñuelos yanelis
